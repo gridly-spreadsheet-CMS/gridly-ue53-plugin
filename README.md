@@ -6,7 +6,7 @@ Manage your game’s data as a single source of truth and roll out continuous up
 
 ## Prerequisites
 
-- Unreal Engine 5.0.0 - 5.0.3
+- Unreal Engine 5.3
 
 ## Getting Started
 
