@@ -9,6 +9,7 @@
 #include "AssetTypeActions_GridlyDataTable.h"
 #include "IAssetTypeActions.h"
 #include "AssetTypeActions_CSVAssetBase.h"
+#include "Features/IModularFeatures.h"
 
 
 struct FToolMenuEntry;

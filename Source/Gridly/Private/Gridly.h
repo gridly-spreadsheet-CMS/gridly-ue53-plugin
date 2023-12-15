@@ -2,8 +2,8 @@
 
 #pragma once
 
-#include "Core/Public/Logging/LogMacros.h"
-#include "Core/Public/Modules/ModuleInterface.h"
+#include "Logging/LogMacros.h"
+#include "Modules/ModuleInterface.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogGridly, Log, Log);
 
