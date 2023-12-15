@@ -1,6 +1,7 @@
 ﻿// Copyright (c) 2021 LocalizeDirect AB
 
 #include "GridlyGameSettings.h"
+#include "Misc/ConfigCacheIni.h"
 
 UGridlyGameSettings::UGridlyGameSettings() :
 	CustomCultureMapping({

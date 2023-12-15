@@ -2,8 +2,8 @@
 
 #include "Gridly.h"
 
-#include "../Public/GridlyGameSettings.h"
-#include "Core/Public/Modules/ModuleManager.h"
+#include "GridlyGameSettings.h"
+#include "Modules/ModuleManager.h"
 
 #if WITH_EDITOR
 #include "ISettingsContainer.h"
