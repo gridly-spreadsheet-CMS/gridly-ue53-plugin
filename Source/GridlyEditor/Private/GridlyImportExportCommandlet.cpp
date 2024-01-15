@@ -79,98 +79,108 @@ int32 UGridlyImportExportCommandlet::Main(const FString& Params)
 	}
 
 	const TArray<ULocalizationTarget*> LocalizationTargets = ULocalizationSettings::GetGameTargetSet()->TargetObjects;
-	ULocalizationTarget* FirstLocTarget = LocalizationTargets.Num() > 0 ? LocalizationTargets[0]: nullptr;
-
-	if (bDoImport)
+//ULocalizationTarget* FirstLocTarget = LocalizationTargets.Num() > 0 ? LocalizationTargets[0]: nullptr;
+for (ULocalizationTarget* LocTarget : LocalizationTargets)
+{
+	// Do something with LocTarget
+	if (LocTarget != nullptr)
 	{
-		// List all cultures (even the native one in case some native translations have been modified in Gridly) to download
-		TArray<FString> Cultures;
-		for (int ItCulture = 0; ItCulture < FirstLocTarget->Settings.SupportedCulturesStatistics.Num(); ItCulture++)
+		if (bDoImport)
 		{
-			if (ItCulture != FirstLocTarget->Settings.NativeCultureIndex)
+			// List all cultures (even the native one in case some native translations have been modified in Gridly) to download
+			TArray<FString> Cultures;
+			for (int ItCulture = 0; ItCulture < LocTarget->Settings.SupportedCulturesStatistics.Num(); ItCulture++)
 			{
-				const FCultureStatistics CultureStats = FirstLocTarget->Settings.SupportedCulturesStatistics[ItCulture];
-				Cultures.Add(CultureStats.CultureName);
+				if (ItCulture != LocTarget->Settings.NativeCultureIndex)
+				{
+					const FCultureStatistics CultureStats = LocTarget->Settings.SupportedCulturesStatistics[ItCulture];
+					Cultures.Add(CultureStats.CultureName);
+				}
+			}
+
+			// Download cultures from Gridly
+			CulturesToDownload.Append(Cultures);
+			for (const FString& CultureName : Cultures)
+			{
+				ILocalizationServiceProvider& Provider = ILocalizationServiceModule::Get().GetProvider();
+				TSharedRef<FDownloadLocalizationTargetFile, ESPMode::ThreadSafe> DownloadTargetFileOp =
+					ILocalizationServiceOperation::Create<FDownloadLocalizationTargetFile>();
+				DownloadTargetFileOp->SetInTargetGuid(LocTarget->Settings.Guid);
+				DownloadTargetFileOp->SetInLocale(CultureName);
+
+				FString Path = FPaths::ProjectSavedDir() / "Temp" / "Game" / LocTarget->Settings.Name / CultureName /
+					LocTarget->Settings.Name + ".po";
+				FPaths::MakePathRelativeTo(Path, *FPaths::ProjectDir());
+				DownloadTargetFileOp->SetInRelativeOutputFilePathAndName(Path);
+
+				auto OperationCompleteDelegate = FLocalizationServiceOperationComplete::CreateUObject(this,
+					&UGridlyImportExportCommandlet::OnDownloadComplete, false);
+
+				Provider.Execute(DownloadTargetFileOp, TArray<FLocalizationServiceTranslationIdentifier>(),
+					ELocalizationServiceOperationConcurrency::Synchronous, OperationCompleteDelegate);
+			}
+
+			// Wait for all downloads
+			while (CulturesToDownload.Num())
+			{
+				FPlatformProcess::Sleep(0.4f);
+				FHttpModule::Get().GetHttpManager().Tick(-1.f);
+			}
+
+			// Run task to import po files, it will be done on the base folder and import all po files data generated after downloading data from gridly
+			if (CulturesToDownload.Num() == 0 && DownloadedFiles.Num() > 0)
+			{
+				const FString& DlPoFile = DownloadedFiles[0]; // retrieve first po file to deduce the base folder
+				const FString TargetName = FPaths::GetBaseFilename(DlPoFile);
+				const auto Target = ILocalizationModule::Get().GetLocalizationTargetByName(TargetName, false);
+
+				const FString DirectoryPath = FPaths::GetPath(DlPoFile);
+				const FString DownloadBasePath = FPaths::GetPath(DirectoryPath);
+
+				// Create commandlet task to Import texts
+				// Note that we could simply "Import all PO files" using a call to PortableObjectPipeline::ImportAll(...), though
+				//		using tasks we are able to easily add/remove call to existing localization functionalities
+				TArray<LocalizationCommandletExecution::FTask> Tasks;
+				const bool ShouldUseProjectFile = !Target->IsMemberOfEngineTargetSet();
+
+				const FString ImportScriptPath = LocalizationConfigurationScript::GetImportTextConfigPath(Target, TOptional<FString>());
+				LocalizationConfigurationScript::GenerateImportTextConfigFile(Target, TOptional<FString>(), DownloadBasePath).WriteWithSCC(ImportScriptPath);
+				Tasks.Add(LocalizationCommandletExecution::FTask(LOCTEXT("ImportTaskName", "Import Translations"), ImportScriptPath, ShouldUseProjectFile));
+
+				const FString ReportScriptPath = LocalizationConfigurationScript::GetWordCountReportConfigPath(Target);
+				LocalizationConfigurationScript::GenerateWordCountReportConfigFile(Target).WriteWithSCC(ReportScriptPath);
+				Tasks.Add(LocalizationCommandletExecution::FTask(LOCTEXT("ReportTaskName", "Generate Reports"), ReportScriptPath, ShouldUseProjectFile));
+
+				// Function will block until all tasks have been run
+				BlockingRunLocCommandletTask(Tasks);
+			}
+
+			// Cleanup
+			CulturesToDownload.Empty();
+			DownloadedFiles.Empty();
+		}
+
+		if (bDoExport)
+		{
+			FHttpRequestCompleteDelegate ReqDelegate = GridlyProvider->CreateExportNativeCultureDelegate();
+			const FText SlowTaskText = LOCTEXT("ExportNativeCultureForTargetToGridlyText", "Exporting native culture for target to Gridly");
+
+			GridlyProvider->ExportForTargetToGridly(LocTarget, ReqDelegate, SlowTaskText);
+
+			// Wait for Http requests
+			while (GridlyProvider->HasRequestsPending())
+			{
+				FPlatformProcess::Sleep(0.4f);
+				FHttpModule::Get().GetHttpManager().Tick(-1.f);
 			}
 		}
+	}
 
-		// Download cultures from Gridly
-		CulturesToDownload.Append(Cultures);
-		for (const FString& CultureName : Cultures)
-		{
-			ILocalizationServiceProvider& Provider = ILocalizationServiceModule::Get().GetProvider();
-			TSharedRef<FDownloadLocalizationTargetFile, ESPMode::ThreadSafe> DownloadTargetFileOp =
-				ILocalizationServiceOperation::Create<FDownloadLocalizationTargetFile>();
-			DownloadTargetFileOp->SetInTargetGuid(FirstLocTarget->Settings.Guid);
-			DownloadTargetFileOp->SetInLocale(CultureName);
 
-			FString Path = FPaths::ProjectSavedDir() / "Temp" / "Game" / FirstLocTarget->Settings.Name / CultureName /
-				FirstLocTarget->Settings.Name + ".po";
-			FPaths::MakePathRelativeTo(Path, *FPaths::ProjectDir());
-			DownloadTargetFileOp->SetInRelativeOutputFilePathAndName(Path);
-
-			auto OperationCompleteDelegate = FLocalizationServiceOperationComplete::CreateUObject(this,
-				&UGridlyImportExportCommandlet::OnDownloadComplete, false);
-
-			Provider.Execute(DownloadTargetFileOp, TArray<FLocalizationServiceTranslationIdentifier>(),
-				ELocalizationServiceOperationConcurrency::Synchronous, OperationCompleteDelegate);
-		}
-
-		// Wait for all downloads
-		while (CulturesToDownload.Num())
-		{
-			FPlatformProcess::Sleep(0.4f);
-			FHttpModule::Get().GetHttpManager().Tick(-1.f);
-		}
-
-		 // Run task to import po files, it will be done on the base folder and import all po files data generated after downloading data from gridly
-		if (CulturesToDownload.Num() == 0 && DownloadedFiles.Num() > 0)
-		{
-			const FString& DlPoFile = DownloadedFiles[0]; // retrieve first po file to deduce the base folder
-			const FString TargetName = FPaths::GetBaseFilename(DlPoFile);
-			const auto Target = ILocalizationModule::Get().GetLocalizationTargetByName(TargetName, false);
-
-			const FString DirectoryPath = FPaths::GetPath(DlPoFile);
-			const FString DownloadBasePath = FPaths::GetPath(DirectoryPath);
-
-			// Create commandlet task to Import texts
-			// Note that we could simply "Import all PO files" using a call to PortableObjectPipeline::ImportAll(...), though
-			//		using tasks we are able to easily add/remove call to existing localization functionalities
-			TArray<LocalizationCommandletExecution::FTask> Tasks;
-			const bool ShouldUseProjectFile = !Target->IsMemberOfEngineTargetSet();
-
-			const FString ImportScriptPath = LocalizationConfigurationScript::GetImportTextConfigPath(Target, TOptional<FString>());
-			LocalizationConfigurationScript::GenerateImportTextConfigFile(Target, TOptional<FString>(), DownloadBasePath).WriteWithSCC(ImportScriptPath);
-			Tasks.Add(LocalizationCommandletExecution::FTask(LOCTEXT("ImportTaskName", "Import Translations"), ImportScriptPath, ShouldUseProjectFile));
-
-			const FString ReportScriptPath = LocalizationConfigurationScript::GetWordCountReportConfigPath(Target);
-			LocalizationConfigurationScript::GenerateWordCountReportConfigFile(Target).WriteWithSCC(ReportScriptPath);
-			Tasks.Add(LocalizationCommandletExecution::FTask(LOCTEXT("ReportTaskName", "Generate Reports"), ReportScriptPath, ShouldUseProjectFile));
-
-			// Function will block until all tasks have been run
-			BlockingRunLocCommandletTask(Tasks);
-		}
-
-		// Cleanup
-		CulturesToDownload.Empty();
-		DownloadedFiles.Empty();
-	 }
-
-	 if (bDoExport)
-	 {
-		 FHttpRequestCompleteDelegate ReqDelegate = GridlyProvider->CreateExportNativeCultureDelegate();
-		 const FText SlowTaskText = LOCTEXT("ExportNativeCultureForTargetToGridlyText", "Exporting native culture for target to Gridly");
-
-		 GridlyProvider->ExportForTargetToGridly(FirstLocTarget, ReqDelegate, SlowTaskText);
-
-		 // Wait for Http requests
-		 while (GridlyProvider->HasRequestsPending())
-		 {
-			 FPlatformProcess::Sleep(0.4f);
-			 FHttpModule::Get().GetHttpManager().Tick(-1.f);
-		 }
-	 }
-
+	if (ExportAllGameTargetPtr && *ExportAllGameTargetPtr == "false") {
+		break;
+	}
+}
 	return 0;
 }
 
