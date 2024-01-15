@@ -53,6 +53,8 @@ int32 UGridlyImportExportCommandlet::Main(const FString& Params)
 		UE_LOG(LogGridlyImportExportCommandlet, Error, TEXT("No config specified."));
 		return -1;
 	}
+	// Reading ExportAllGameTarget argument
+	FString* ExportAllGameTargetPtr = ParamVals.Find(FString(TEXT("ExportAllGameTarget")));
 
 	// Set config section
 	FString SectionName;
