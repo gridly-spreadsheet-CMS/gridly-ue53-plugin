@@ -23,6 +23,7 @@ bool FGridlyLocalizedTextConverter::TableRowsToPolyglotTextDatas(const TArray<FG
 		UE_LOG(LogGridly, Verbose, TEXT("Row %d: %s (%s)"), i, *TableRows[i].Id, *TableRows[i].Path);
 
 		FString Key = TableRows[i].Id;
+		FString FullKey = Key;
 		FString Namespace = bUsePathAsNamespace ? TableRows[i].Path : TEXT("");
 		FString SourceCulture;
 		FString SourceText;
@@ -93,7 +94,7 @@ bool FGridlyLocalizedTextConverter::TableRowsToPolyglotTextDatas(const TArray<FG
 			}
 		}
 
-		OutPolyglotTextDatas.Add(Key, PolyglotTextData);
+		OutPolyglotTextDatas.Add(FullKey, PolyglotTextData);
 	}
 
 	return OutPolyglotTextDatas.Num() > 0;
