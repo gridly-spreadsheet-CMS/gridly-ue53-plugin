@@ -36,7 +36,7 @@ public:
 	FGridlyLocalizationTargetEditorCommands() :
 		TCommands<FGridlyLocalizationTargetEditorCommands>("GridlyLocalizationTargetEditor",
 			NSLOCTEXT("Gridly", "GridlyLocalizationTargetEditor", "Gridly Localization Target Editor"), NAME_None,
-			FEditorStyle::GetStyleSetName())
+			FAppStyle::GetAppStyleSetName())
 	{
 	}
 
